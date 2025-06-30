@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>照片地图展示（Leaflet + OSM + 卫星图切换）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet 地图库 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- exifr.js: 读取照片 GPS -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
+
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { width: 100%; height: 90vh; }
+    #upload {
+      padding: 10px;
+      background: #f0f0f0;
+      text-align: center;
+    }
+    button {
+      margin: 5px;
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="upload">
+    <label>选择照片文件夹：</label>
+    <input type="file" id="input" webkitdirectory multiple accept="image/*">
+    <button id="locateBtn">📍 获取我的位置</button>
+    <button id="toggleLayerBtn">🛰️ 切换地图图层</button>
+  </div>
+  <div id="map"></div>
+
+  <script>
+    // 初始化地图
+    const normalLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    });
+
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri'
+    });
+
+    const map = L.map('map', {
+      center: [20, 0],
+      zoom: 2,
+      layers: [normalLayer]
+    });
+
+    let isSatellite = false;
+
+    document.getElementById('toggleLayerBtn').addEventListener('click', () => {
+      if (isSatellite) {
+        map.removeLayer(satelliteLayer);
+        map.addLayer(normalLayer);
+        isSatellite = false;
+      } else {
+        map.removeLayer(normalLayer);
+        map.addLayer(satelliteLayer);
+        isSatellite = true;
+      }
+    });
+
+    // 添加照片标记点
+    document.getElementById('input').addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files).filter(file => file.type.startsWith('image/'));
+
+      for (const file of files) {
+        try {
+          const gps = await exifr.gps(file);
+          if (gps && gps.latitude && gps.longitude) {
+            const lat = gps.latitude;
+            const lng = gps.longitude;
+            const imgURL = URL.createObjectURL(file);
+
+            const marker = L.marker([lat, lng]).addTo(map);
+            marker.bindPopup(`
+              <strong>${file.name}</strong><br>
+              <img src="${imgURL}" style="width:200px;">
+            `);
+          } else {
+            console.warn('无 GPS 信息:', file.name);
+          }
+        } catch (err) {
+          console.error('读取失败:', file.name, err);
+        }
+      }
+    });
+
+    // 获取当前位置
+    document.getElementById('locateBtn').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        alert('此浏览器不支持定位。');
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition((position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+
+        L.marker([lat, lng]).addTo(map)
+          .bindPopup('📍 您的位置<br>精度约 ' + Math.round(accuracy) + ' 米')
+          .openPopup();
+
+        map.setView([lat, lng], 16);
+      }, (err) => {
+        alert('定位失败: ' + err.message);
+      });
+    });
+  </script>
+</body>
+</html>
